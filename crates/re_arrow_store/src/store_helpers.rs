@@ -63,14 +63,14 @@ impl DataStore {
 
                     let err = Box::new(err) as Box<dyn std::error::Error>;
                     if let Some(bt) = bt {
-                        re_log::error_once!(
+                        re_log::debug_once!(
                             "Couldn't deserialize component at {entity_path}#{}: {}\n{:#?}",
                             C::name(),
                             re_error::format(&err),
                             bt,
                         );
                     } else {
-                        re_log::error_once!(
+                        re_log::debug_once!(
                             "Couldn't deserialize component at {entity_path}#{}: {}",
                             C::name(),
                             re_error::format(&err)
@@ -80,7 +80,7 @@ impl DataStore {
                 }
 
                 let err = Box::new(err) as Box<dyn std::error::Error>;
-                re_log::error_once!(
+                re_log::debug_once!(
                     "Couldn't deserialize component at {entity_path}#{}: {}",
                     C::name(),
                     re_error::format(&err)
