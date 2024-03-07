@@ -1,7 +1,7 @@
 //! Various strongly typed sets of entities to express intent and avoid mistakes.
 
 use nohash_hasher::{IntMap, IntSet};
-use re_log_types::EntityPath;
+use re_log_types::{EntityPath, EntityPathHash};
 
 use crate::ViewSystemIdentifier;
 
@@ -48,8 +48,40 @@ impl std::ops::Deref for IndicatedEntities {
 #[derive(Default)]
 pub struct VisualizableEntities(pub IntSet<EntityPath>);
 
+impl VisualizableEntities {
+    pub fn new(
+        mut applicability_entity: ApplicableEntities,
+        filtered: &FilteredOutEntities,
+    ) -> Self {
+        if filtered.0.is_empty() {
+            Self(applicability_entity.0)
+        } else {
+            applicability_entity
+                .0
+                .retain(|entity| !filtered.contains_key(&entity.hash()));
+            Self(applicability_entity.0)
+        }
+    }
+}
+
 impl std::ops::Deref for VisualizableEntities {
     type Target = IntSet<EntityPath>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Identifier for a reason why an entity path is *not* visualizable by a given visualizer.
+pub struct EntityFilterReasonId(pub u32);
+
+/// List of entities that were filtered out
+#[derive(Default)]
+pub struct FilteredOutEntities(pub IntMap<EntityPathHash, EntityFilterReasonId>);
+
+impl std::ops::Deref for FilteredOutEntities {
+    type Target = IntMap<EntityPathHash, EntityFilterReasonId>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
