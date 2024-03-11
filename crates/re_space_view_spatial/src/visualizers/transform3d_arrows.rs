@@ -2,9 +2,9 @@ use egui::Color32;
 use re_log_types::EntityPath;
 use re_types::components::{InstanceKey, Transform3D};
 use re_viewer_context::{
-    ApplicableEntities, IdentifiedViewSystem, SpaceViewSystemExecutionError, ViewContextCollection,
-    ViewQuery, ViewerContext, VisualizableEntities, VisualizableFilterContext, VisualizerQueryInfo,
-    VisualizerSystem,
+    ApplicableEntities, FilteredOutEntities, IdentifiedViewSystem, SpaceViewSystemExecutionError,
+    ViewContextCollection, ViewQuery, ViewerContext, VisualizableFilterContext,
+    VisualizerQueryInfo, VisualizerSystem,
 };
 
 use crate::{
@@ -37,9 +37,9 @@ impl VisualizerSystem for Transform3DArrowsVisualizer {
 
     fn filter_visualizable_entities(
         &self,
-        entities: ApplicableEntities,
+        entities: &ApplicableEntities,
         context: &dyn VisualizableFilterContext,
-    ) -> VisualizableEntities {
+    ) -> FilteredOutEntities {
         filter_visualizable_3d_entities(entities, context)
     }
 

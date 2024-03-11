@@ -19,9 +19,9 @@ use re_types::{
     Archetype as _, ComponentNameSet,
 };
 use re_viewer_context::{
-    gpu_bridge, ApplicableEntities, DefaultColor, IdentifiedViewSystem, SpaceViewClass,
-    SpaceViewSystemExecutionError, TensorDecodeCache, TensorStatsCache, ViewContextCollection,
-    ViewQuery, ViewerContext, VisualizableEntities, VisualizableFilterContext,
+    gpu_bridge, ApplicableEntities, DefaultColor, FilteredOutEntities, IdentifiedViewSystem,
+    SpaceViewClass, SpaceViewSystemExecutionError, TensorDecodeCache, TensorStatsCache,
+    ViewContextCollection, ViewQuery, ViewerContext, VisualizableFilterContext,
     VisualizerAdditionalApplicabilityFilter, VisualizerQueryInfo, VisualizerSystem,
 };
 
@@ -721,9 +721,9 @@ impl VisualizerSystem for ImageVisualizer {
 
     fn filter_visualizable_entities(
         &self,
-        entities: ApplicableEntities,
+        entities: &ApplicableEntities,
         context: &dyn VisualizableFilterContext,
-    ) -> VisualizableEntities {
+    ) -> FilteredOutEntities {
         re_tracing::profile_function!();
         filter_visualizable_2d_entities(entities, context)
     }

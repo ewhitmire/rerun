@@ -32,9 +32,10 @@ use re_types::{
     datatypes::{KeypointId, KeypointPair},
 };
 use re_viewer_context::{
-    auto_color, Annotations, ApplicableEntities, DefaultColor, ResolvedAnnotationInfos,
-    SpaceViewClassRegistryError, SpaceViewSystemExecutionError, SpaceViewSystemRegistrator,
-    VisualizableEntities, VisualizableFilterContext, VisualizerCollection,
+    auto_color, Annotations, ApplicableEntities, DefaultColor, FilteredOutEntities,
+    ResolvedAnnotationInfos, SpaceViewClassRegistryError, SpaceViewSystemExecutionError,
+    SpaceViewSystemRegistrator, VisualizableEntities, VisualizableFilterContext,
+    VisualizerCollection,
 };
 
 use crate::space_view_2d::VisualizableFilterContext2D;
@@ -383,14 +384,14 @@ pub fn image_view_coordinates() -> re_types::components::ViewCoordinates {
 }
 
 fn filter_visualizable_2d_entities(
-    entities: ApplicableEntities,
+    entities: &ApplicableEntities,
     context: &dyn VisualizableFilterContext,
-) -> VisualizableEntities {
+) -> FilteredOutEntities {
     if let Some(context) = context
         .as_any()
         .downcast_ref::<VisualizableFilterContext2D>()
     {
-        VisualizableEntities(
+        FilteredOutEntities(
             context
                 .entities_in_main_2d_space
                 .intersection(&entities.0)
@@ -401,7 +402,7 @@ fn filter_visualizable_2d_entities(
         .as_any()
         .downcast_ref::<VisualizableFilterContext3D>()
     {
-        VisualizableEntities(
+        FilteredOutEntities(
             context
                 .entities_under_pinholes
                 .intersection(&entities.0)
@@ -409,37 +410,41 @@ fn filter_visualizable_2d_entities(
                 .collect(),
         )
     } else {
-        VisualizableEntities(entities.0)
+        FilteredOutEntities(entities.0)
     }
+
+    FilteredOutEntities::default()
 }
 
 fn filter_visualizable_3d_entities(
-    entities: ApplicableEntities,
+    entities: &ApplicableEntities,
     context: &dyn VisualizableFilterContext,
-) -> VisualizableEntities {
-    if let Some(context) = context
-        .as_any()
-        .downcast_ref::<VisualizableFilterContext2D>()
-    {
-        VisualizableEntities(
-            context
-                .reprojectable_3d_entities
-                .intersection(&entities.0)
-                .cloned()
-                .collect(),
-        )
-    } else if let Some(context) = context
-        .as_any()
-        .downcast_ref::<VisualizableFilterContext3D>()
-    {
-        VisualizableEntities(
-            context
-                .entities_in_main_3d_space
-                .intersection(&entities.0)
-                .cloned()
-                .collect(),
-        )
-    } else {
-        VisualizableEntities(entities.0)
-    }
+) -> FilteredOutEntities {
+    // if let Some(context) = context
+    //     .as_any()
+    //     .downcast_ref::<VisualizableFilterContext2D>()
+    // {
+    //     VisualizableEntities(
+    //         context
+    //             .reprojectable_3d_entities
+    //             .intersection(&entities.0)
+    //             .cloned()
+    //             .collect(),
+    //     )
+    // } else if let Some(context) = context
+    //     .as_any()
+    //     .downcast_ref::<VisualizableFilterContext3D>()
+    // {
+    //     VisualizableEntities(
+    //         context
+    //             .entities_in_main_3d_space
+    //             .intersection(&entities.0)
+    //             .cloned()
+    //             .collect(),
+    //     )
+    // } else {
+    //     VisualizableEntities(entities.0)
+    // }
+
+    FilteredOutEntities::default()
 }

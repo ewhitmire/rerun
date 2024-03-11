@@ -6,8 +6,8 @@ use re_types::{
     components::{InstanceKey, Transform3D, ViewCoordinates},
 };
 use re_viewer_context::{
-    ApplicableEntities, IdentifiedViewSystem, SpaceViewOutlineMasks, SpaceViewSystemExecutionError,
-    ViewContextCollection, ViewQuery, ViewerContext, VisualizableEntities,
+    ApplicableEntities, FilteredOutEntities, IdentifiedViewSystem, SpaceViewOutlineMasks,
+    SpaceViewSystemExecutionError, ViewContextCollection, ViewQuery, ViewerContext,
     VisualizableFilterContext, VisualizerQueryInfo, VisualizerSystem,
 };
 
@@ -192,9 +192,9 @@ impl VisualizerSystem for CamerasVisualizer {
 
     fn filter_visualizable_entities(
         &self,
-        entities: ApplicableEntities,
+        entities: &ApplicableEntities,
         context: &dyn VisualizableFilterContext,
-    ) -> VisualizableEntities {
+    ) -> FilteredOutEntities {
         re_tracing::profile_function!();
         filter_visualizable_3d_entities(entities, context)
     }

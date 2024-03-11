@@ -6,9 +6,9 @@ use re_types::{
     components::{ClassId, Color, InstanceKey, KeypointId, Position3D, Radius, Text},
 };
 use re_viewer_context::{
-    Annotations, ApplicableEntities, IdentifiedViewSystem, ResolvedAnnotationInfos,
-    SpaceViewSystemExecutionError, ViewContextCollection, ViewQuery, ViewerContext,
-    VisualizableEntities, VisualizableFilterContext, VisualizerQueryInfo, VisualizerSystem,
+    Annotations, ApplicableEntities, FilteredOutEntities, IdentifiedViewSystem,
+    ResolvedAnnotationInfos, SpaceViewSystemExecutionError, ViewContextCollection, ViewQuery,
+    ViewerContext, VisualizableFilterContext, VisualizerQueryInfo, VisualizerSystem,
 };
 
 use crate::{
@@ -177,9 +177,9 @@ impl VisualizerSystem for Points3DVisualizer {
 
     fn filter_visualizable_entities(
         &self,
-        entities: ApplicableEntities,
+        entities: &ApplicableEntities,
         context: &dyn VisualizableFilterContext,
-    ) -> VisualizableEntities {
+    ) -> FilteredOutEntities {
         re_tracing::profile_function!();
         filter_visualizable_3d_entities(entities, context)
     }

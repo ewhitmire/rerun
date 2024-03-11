@@ -5,9 +5,9 @@ use re_types::{
     components::{ClassId, Color, InstanceKey, KeypointId, Position3D, Radius, Text, Vector3D},
 };
 use re_viewer_context::{
-    ApplicableEntities, IdentifiedViewSystem, ResolvedAnnotationInfos,
+    ApplicableEntities, FilteredOutEntities, IdentifiedViewSystem, ResolvedAnnotationInfos,
     SpaceViewSystemExecutionError, ViewContextCollection, ViewQuery, ViewerContext,
-    VisualizableEntities, VisualizableFilterContext, VisualizerQueryInfo, VisualizerSystem,
+    VisualizableFilterContext, VisualizerQueryInfo, VisualizerSystem,
 };
 
 use super::{
@@ -197,9 +197,9 @@ impl VisualizerSystem for Arrows3DVisualizer {
 
     fn filter_visualizable_entities(
         &self,
-        entities: ApplicableEntities,
+        entities: &ApplicableEntities,
         context: &dyn VisualizableFilterContext,
-    ) -> VisualizableEntities {
+    ) -> FilteredOutEntities {
         re_tracing::profile_function!();
         filter_visualizable_3d_entities(entities, context)
     }

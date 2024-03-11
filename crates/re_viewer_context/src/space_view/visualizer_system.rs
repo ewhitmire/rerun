@@ -5,8 +5,7 @@ use re_types::{Archetype, ComponentNameSet};
 use crate::{
     typed_entity_collections::FilteredOutEntities, ApplicableEntities, IdentifiedViewSystem,
     SpaceViewSystemExecutionError, ViewContextCollection, ViewQuery, ViewSystemIdentifier,
-    ViewerContext, VisualizableEntities, VisualizableFilterContext,
-    VisualizerAdditionalApplicabilityFilter,
+    ViewerContext, VisualizableFilterContext, VisualizerAdditionalApplicabilityFilter,
 };
 
 pub struct VisualizerQueryInfo {

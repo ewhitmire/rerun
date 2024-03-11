@@ -8,9 +8,9 @@ use re_types::{
     },
 };
 use re_viewer_context::{
-    ApplicableEntities, IdentifiedViewSystem, SpaceViewSystemExecutionError, ViewContextCollection,
-    ViewQuery, ViewerContext, VisualizableEntities, VisualizableFilterContext, VisualizerQueryInfo,
-    VisualizerSystem,
+    ApplicableEntities, FilteredOutEntities, IdentifiedViewSystem, SpaceViewSystemExecutionError,
+    ViewContextCollection, ViewQuery, ViewerContext, VisualizableFilterContext,
+    VisualizerQueryInfo, VisualizerSystem,
 };
 
 use super::{
@@ -160,9 +160,9 @@ impl VisualizerSystem for Mesh3DVisualizer {
 
     fn filter_visualizable_entities(
         &self,
-        entities: ApplicableEntities,
+        entities: &ApplicableEntities,
         context: &dyn VisualizableFilterContext,
-    ) -> VisualizableEntities {
+    ) -> FilteredOutEntities {
         re_tracing::profile_function!();
         filter_visualizable_3d_entities(entities, context)
     }

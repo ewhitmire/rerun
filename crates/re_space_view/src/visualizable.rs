@@ -26,7 +26,7 @@ pub fn determine_visualizable_entities(
                     applicable_entities_per_visualizer.get(&visualizer_identifier)
                 {
                     let filtered_entities = visualizer_system
-                        .filter_visualizable_entities(&applicable_entities, filter_ctx.as_ref());
+                        .filter_visualizable_entities(applicable_entities, filter_ctx.as_ref());
                     VisualizableEntities::new(applicable_entities.clone(), &filtered_entities)
                 } else {
                     VisualizableEntities::default()

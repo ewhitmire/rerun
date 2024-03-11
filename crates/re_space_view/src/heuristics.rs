@@ -4,8 +4,6 @@ use re_viewer_context::{
     SpaceViewSpawnHeuristics, ViewerContext, VisualizableEntities, VisualizerSystem,
 };
 
-use crate::visualizable;
-
 /// Spawns a space view for each single entity which is visualizable & indicator-matching for a given visualizer.
 ///
 /// This is used as utility by *some* space view types that want
