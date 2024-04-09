@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
 use parking_lot::RwLock;
+
 use re_data_store::{DataStore, RangeQuery, TimeInt};
 use re_log_types::{EntityPath, TimeRange};
 use re_query2::Promise;
 use re_types_core::ComponentName;
 use re_types_core::SizeBytes;
 
+use crate::cache;
 use crate::{
     CacheKey, CachedRangeComponentResults, CachedRangeComponentResultsInner, CachedRangeResults,
     Caches,
@@ -121,7 +123,6 @@ impl std::fmt::Debug for RangeCache {
                 .format_range_utc(TimeRange::new(data_time_min, data_time_max)),
             re_format::format_bytes(per_data_time.total_size_bytes() as _),
         ));
-        strings.push(indent::indent_all_by(2, format!("{per_data_time:?}")));
 
         if strings.is_empty() {
             return f.write_str("<empty>");
@@ -158,14 +159,21 @@ impl RangeCache {
         re_tracing::profile_scope!("range", format!("{query:?}"));
 
         let RangeCache {
-            cache_key: _,
+            cache_key,
             per_data_time,
             pending_invalidation: _,
         } = self;
 
+        // No point in caching indicator components in range queries.
+        if cache_key.component_name.is_indicator_component() {
+            return per_data_time.clone();
+        }
+
         let mut per_data_time = per_data_time.write();
 
         if let Some(query_front) = per_data_time.compute_front_query(query) {
+            re_tracing::profile_scope!("front");
+
             for (data_time, row_id, mut cells) in
                 store.range(&query_front, entity_path, [component_name])
             {
@@ -187,6 +195,8 @@ impl RangeCache {
         }
 
         if let Some(query_back) = per_data_time.compute_back_query(query) {
+            re_tracing::profile_scope!("back");
+
             for (data_time, row_id, mut cells) in
                 store.range(&query_back, entity_path, [component_name])
             {
@@ -231,6 +241,17 @@ impl RangeCache {
 // ---
 
 impl CachedRangeComponentResultsInner {
+    #[inline]
+    pub fn num_values(&self) -> u64 {
+        self.cached_dense
+            .as_ref()
+            .map_or(0u64, |cached| cached.dyn_num_values() as _)
+            + self
+                .cached_sparse
+                .as_ref()
+                .map_or(0u64, |cached| cached.dyn_num_values() as _)
+    }
+
     /// Given a `query`, returns N reduced queries that are sufficient to fill the missing data
     /// on both the front & back sides of the cache.
     #[inline]
@@ -247,7 +268,10 @@ impl CachedRangeComponentResultsInner {
         let mut reduced_query = query.clone();
 
         // If nothing has been cached already, then we just want to query everything.
-        if self.indices.is_empty() {
+        if self.indices.is_empty()
+            && self.promises_front.is_empty()
+            && self.promises_back.is_empty()
+        {
             return Some(reduced_query);
         }
 
@@ -302,7 +326,10 @@ impl CachedRangeComponentResultsInner {
 
         // If nothing has been cached already, then the front query is already going to take care
         // of everything.
-        if self.indices.is_empty() {
+        if self.indices.is_empty()
+            && self.promises_front.is_empty()
+            && self.promises_back.is_empty()
+        {
             return None;
         }
 

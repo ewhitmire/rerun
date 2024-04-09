@@ -1,23 +1,25 @@
 //! Caching datastructures for `re_query`.
 
 mod cache;
+mod cache_stats;
 mod flat_vec_deque;
 mod latest_at;
 mod range;
 
 pub use self::cache::{CacheKey, Caches};
+pub use self::cache_stats::{CachedComponentStats, CachesStats};
 pub use self::flat_vec_deque::{ErasedFlatVecDeque, FlatVecDeque};
 pub use self::latest_at::{
     CachedLatestAtComponentResults, CachedLatestAtMonoResult, CachedLatestAtResults,
 };
-pub use self::range::{CachedRangeComponentResults, CachedRangeResults};
+pub use self::range::{CachedRangeComponentResults, CachedRangeData, CachedRangeResults};
 
 pub(crate) use self::latest_at::LatestAtCache;
 pub(crate) use self::range::{CachedRangeComponentResultsInner, RangeCache};
 
 pub use re_query2::{
-    clamped_zip::*, range_zip::*, Promise, PromiseId, PromiseResolver, PromiseResult, QueryError,
-    Result, ToArchetype,
+    clamped_zip::*, range_zip::*, ExtraQueryHistory, Promise, PromiseId, PromiseResolver,
+    PromiseResult, QueryError, Result, ToArchetype, VisibleHistory, VisibleHistoryBoundary,
 };
 
 pub mod external {

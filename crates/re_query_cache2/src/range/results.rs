@@ -20,7 +20,7 @@ use crate::{ErasedFlatVecDeque, FlatVecDeque, Promise, PromiseResolver, PromiseR
 /// The data is both deserialized and resolved/converted.
 ///
 /// Use [`CachedRangeResults::get`], [`CachedRangeResults::get_required`] and
-/// [`CachedRangeResults::get_optional`] in order to access the results for each individual component.
+/// [`CachedRangeResults::get_or_empty`] in order to access the results for each individual component.
 #[derive(Debug)]
 pub struct CachedRangeResults {
     /// Raw results for each individual component.
@@ -75,7 +75,7 @@ impl CachedRangeResults {
     ///
     /// Returns empty results if the component is not present.
     #[inline]
-    pub fn get_optional(
+    pub fn get_or_empty(
         &self,
         component_name: impl Into<ComponentName>,
     ) -> &CachedRangeComponentResults {
@@ -103,7 +103,7 @@ impl CachedRangeResults {
 
 /// Lazily cached results for a particular component when using a cached range query.
 #[derive(Debug, Clone)]
-pub struct CachedRangeComponentResults(Arc<RwLock<CachedRangeComponentResultsInner>>);
+pub struct CachedRangeComponentResults(pub(crate) Arc<RwLock<CachedRangeComponentResultsInner>>);
 
 impl re_types_core::SizeBytes for CachedRangeComponentResults {
     #[inline]
@@ -797,6 +797,10 @@ impl CachedRangeComponentResultsInner {
     /// No-op in release.
     #[inline]
     pub fn sanity_check(&self) {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+
         let Self {
             indices,
             promises_front,

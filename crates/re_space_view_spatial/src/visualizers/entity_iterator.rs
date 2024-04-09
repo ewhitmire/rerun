@@ -1,6 +1,11 @@
-use re_entity_db::EntityProperties;
-use re_log_types::{EntityPath, RowId, TimeInt};
-use re_query::{query_archetype_with_history, ArchetypeView, QueryError};
+use re_data_store::{LatestAtQuery, RangeQuery};
+use re_entity_db::{EntityDb, EntityProperties};
+use re_log_types::{EntityPath, RowId, TimeInt, Timeline};
+use re_query::{ArchetypeView, QueryError};
+use re_query_cache2::{
+    CachedLatestAtComponentResults, CachedLatestAtResults, CachedRangeData, CachedRangeResults,
+    ExtraQueryHistory, PromiseResolver, PromiseResult,
+};
 use re_renderer::DepthOffset;
 use re_space_view::query_visual_history;
 use re_types::{components::InstanceKey, Archetype, Component};
@@ -16,6 +21,193 @@ use crate::{
     },
     SpatialSpaceView3D,
 };
+
+// ---
+
+// TODO: that probably belongs in re_query_cache instead
+
+#[derive(Debug)]
+pub enum ArchetypeResults {
+    LatestAt(LatestAtQuery, CachedLatestAtResults),
+    Range(RangeQuery, CachedRangeResults),
+}
+
+impl From<(LatestAtQuery, CachedLatestAtResults)> for ArchetypeResults {
+    #[inline]
+    fn from((query, results): (LatestAtQuery, CachedLatestAtResults)) -> Self {
+        Self::LatestAt(query, results)
+    }
+}
+
+impl From<(RangeQuery, CachedRangeResults)> for ArchetypeResults {
+    #[inline]
+    fn from((query, results): (RangeQuery, CachedRangeResults)) -> Self {
+        Self::Range(query, results)
+    }
+}
+
+impl ArchetypeResults {
+    // TODO(#5607): what should happen if the promise is still pending?
+    #[inline]
+    pub fn latest_at<'a, C: Component>(
+        resolver: &PromiseResolver,
+        results: &'a CachedLatestAtComponentResults,
+    ) -> re_query_cache2::Result<&'a [C]> {
+        match results.to_dense(resolver).flatten() {
+            PromiseResult::Pending => Ok(&[]),
+            PromiseResult::Error(err) => Err(re_query_cache2::QueryError::Other(err.into())),
+            PromiseResult::Ready(data) => Ok(data),
+        }
+    }
+
+    // TODO(#5607): what should happen if the promise is still pending?
+    #[inline]
+    pub fn check_range<'a, C: Component>(
+        query: &RangeQuery,
+        results: &'a CachedRangeData<'a, C>,
+    ) -> re_query_cache2::Result<()> {
+        let (front_status, back_status) = results.status(query.range());
+        match front_status {
+            PromiseResult::Pending => return Ok(()),
+            PromiseResult::Error(err) => {
+                return Err(re_query_cache2::QueryError::Other(err.into()))
+            }
+            PromiseResult::Ready(_) => {}
+        }
+        match back_status {
+            PromiseResult::Pending => return Ok(()),
+            PromiseResult::Error(err) => {
+                return Err(re_query_cache2::QueryError::Other(err.into()))
+            }
+            PromiseResult::Ready(_) => {}
+        }
+
+        Ok(())
+    }
+}
+
+pub fn query_archetype_with_history<A: Archetype>(
+    entity_db: &EntityDb,
+    timeline: &Timeline,
+    time: &TimeInt,
+    history: &ExtraQueryHistory,
+    entity_path: &EntityPath,
+) -> ArchetypeResults {
+    let visible_history = match timeline.typ() {
+        re_log_types::TimeType::Time => history.nanos,
+        re_log_types::TimeType::Sequence => history.sequences,
+    };
+
+    let time_range = visible_history.time_range(*time);
+
+    let store = entity_db.store();
+    let caches = entity_db.query_caches2();
+
+    if !history.enabled || time_range.min() == time_range.max() {
+        let latest_query = LatestAtQuery::new(*timeline, time_range.min());
+        let results = caches.latest_at(
+            store,
+            &latest_query,
+            entity_path,
+            A::all_components().iter().copied(),
+        );
+        (latest_query, results).into()
+    } else {
+        let range_query = RangeQuery::new(*timeline, time_range);
+        let results = caches.range(
+            store,
+            &range_query,
+            entity_path,
+            A::all_components().iter().copied(),
+        );
+        (range_query, results).into()
+    }
+}
+
+/// Iterates through all entity views for a given archetype.
+///
+/// The callback passed in gets passed along an [`SpatialSceneEntityContext`] which contains
+/// various useful information about an entity in the context of the current scene.
+//
+// TODO: everything but that one should disappear
+pub fn process_archetype<System: IdentifiedViewSystem, A, F>(
+    ctx: &ViewerContext<'_>,
+    query: &ViewQuery<'_>,
+    view_ctx: &ViewContextCollection,
+    default_depth_offset: DepthOffset,
+    mut fun: F,
+) -> Result<(), SpaceViewSystemExecutionError>
+where
+    A: Archetype,
+    F: FnMut(
+        &ViewerContext<'_>,
+        &EntityPath,
+        &EntityProperties,
+        &SpatialSceneEntityContext<'_>,
+        &ArchetypeResults,
+    ) -> Result<(), SpaceViewSystemExecutionError>,
+{
+    let transforms = view_ctx.get::<TransformContext>()?;
+    let depth_offsets = view_ctx.get::<EntityDepthOffsets>()?;
+    let annotations = view_ctx.get::<AnnotationSceneContext>()?;
+    let counter = view_ctx.get::<PrimitiveCounter>()?;
+
+    for data_result in query.iter_visible_data_results(ctx, System::identifier()) {
+        // The transform that considers pinholes only makes sense if this is a 3D space-view
+        let world_from_entity =
+            if view_ctx.space_view_class_identifier() == SpatialSpaceView3D::identifier() {
+                transforms.reference_from_entity(&data_result.entity_path)
+            } else {
+                transforms.reference_from_entity_ignoring_pinhole(
+                    &data_result.entity_path,
+                    ctx.recording(),
+                    &query.latest_at_query(),
+                )
+            };
+
+        let Some(world_from_entity) = world_from_entity else {
+            continue;
+        };
+        let entity_context = SpatialSceneEntityContext {
+            world_from_entity,
+            depth_offset: *depth_offsets
+                .per_entity
+                .get(&data_result.entity_path.hash())
+                .unwrap_or(&default_depth_offset),
+            annotations: annotations.0.find(&data_result.entity_path),
+            highlight: query
+                .highlights
+                .entity_outline_mask(data_result.entity_path.hash()),
+            space_view_class_identifier: view_ctx.space_view_class_identifier(),
+        };
+
+        let extra_history = query_visual_history(ctx, data_result);
+
+        let results = query_archetype_with_history::<A>(
+            ctx.recording(),
+            &query.timeline,
+            &query.latest_at,
+            &extra_history,
+            &data_result.entity_path,
+        );
+
+        // TODO: note that we used to compute num_primitives here, which is used for scene size
+        // heuristics, and that we dont anymore, and that it'll default to 1
+        _ = counter;
+
+        fun(
+            ctx,
+            &data_result.entity_path,
+            data_result.accumulated_properties(),
+            &entity_context,
+            &results,
+        )?;
+    }
+
+    Ok(())
+}
+
+// ---
 
 /// Iterates through all entity views for a given archetype.
 ///
@@ -73,8 +265,10 @@ where
         };
 
         let extra_history = query_visual_history(ctx, data_result);
+        #[allow(unsafe_code)]
+        let extra_history = unsafe { std::mem::transmute(extra_history) };
 
-        match query_archetype_with_history::<A, N>(
+        match re_query::query_archetype_with_history::<A, N>(
             ctx.recording_store(),
             &query.timeline,
             &query.latest_at,
@@ -183,6 +377,8 @@ macro_rules! impl_process_archetype {
                 };
 
                 let extra_history = query_visual_history(ctx, data_result);
+                #[allow(unsafe_code)]
+                let extra_history = unsafe { std::mem::transmute(extra_history) };
 
                 match ctx.recording().query_caches().[<query_archetype_with_history_pov$N _comp$M>]::<A, $($pov,)+ $($comp,)* _>(
                     ctx.recording_store(),
@@ -243,6 +439,8 @@ seq!(NUM_COMP in 0..10 {
 ///
 /// Returned value might be conservative and some of the instances may not be displayable after all,
 /// e.g. due to invalid transformation etc.
+//
+// TODO: this we can do :)
 pub fn count_instances_in_archetype_views<
     System: IdentifiedViewSystem,
     A: Archetype,
@@ -263,8 +461,10 @@ pub fn count_instances_in_archetype_views<
 
     for data_result in query.iter_visible_data_results(ctx, System::identifier()) {
         let extra_history = query_visual_history(ctx, data_result);
+        #[allow(unsafe_code)]
+        let extra_history = unsafe { std::mem::transmute(extra_history) };
 
-        match query_archetype_with_history::<A, N>(
+        match re_query::query_archetype_with_history::<A, N>(
             ctx.recording_store(),
             &query.timeline,
             &query.latest_at,

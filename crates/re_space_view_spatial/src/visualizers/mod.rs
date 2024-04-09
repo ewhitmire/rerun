@@ -21,9 +21,6 @@ pub use images::{ImageVisualizer, ViewerImage};
 pub use spatial_view_visualizer::SpatialViewVisualizerData;
 pub use transform3d_arrows::{add_axis_arrows, Transform3DArrowsVisualizer};
 
-#[doc(hidden)] // Public for benchmarks
-pub use points3d::{LoadedPoints, Points3DComponentData};
-
 use ahash::HashMap;
 
 use re_entity_db::{EntityPath, InstancePathHash};
@@ -107,6 +104,60 @@ pub fn picking_id_from_instance_key(
     re_renderer::PickingLayerInstanceId(instance_key.0)
 }
 
+// TODO: explain
+// TODO: remove other
+/// Process [`Color`] components using annotations and default colors.
+pub fn process_color_slice2<'a>(
+    entity_path: &'a EntityPath,
+    num_instances: usize,
+    annotation_infos: &'a ResolvedAnnotationInfos,
+    colors: &'a [Color],
+) -> Vec<egui::Color32> {
+    // This can be rather slow for colors with transparency, since we need to pre-multiply the alpha.
+    re_tracing::profile_function!();
+
+    let default_color = DefaultColor::EntityPath(entity_path);
+
+    if colors.is_empty() {
+        match annotation_infos {
+            ResolvedAnnotationInfos::Same(count, annotation_info) => {
+                re_tracing::profile_scope!("no colors, same annotation");
+                let color = annotation_info.color(None, default_color);
+                vec![color; *count]
+            }
+            ResolvedAnnotationInfos::Many(annotation_info) => {
+                re_tracing::profile_scope!("no-colors, many annotations");
+                annotation_info
+                    .iter()
+                    .map(|annotation_info| annotation_info.color(None, default_color))
+                    .collect()
+            }
+        }
+    } else {
+        let colors = colors
+            .iter()
+            .chain(std::iter::repeat(colors.last().unwrap()))
+            .take(num_instances);
+        match annotation_infos {
+            ResolvedAnnotationInfos::Same(_count, annotation_info) => {
+                re_tracing::profile_scope!("many-colors, same annotation");
+                colors
+                    .map(|color| annotation_info.color(Some(color.to_array()), default_color))
+                    .collect()
+            }
+            ResolvedAnnotationInfos::Many(annotation_infos) => {
+                re_tracing::profile_scope!("many-colors, many annotations");
+                colors
+                    .zip(annotation_infos.iter())
+                    .map(move |(color, annotation_info)| {
+                        annotation_info.color(Some(color.to_array()), default_color)
+                    })
+                    .collect()
+            }
+        }
+    }
+}
+
 /// Process [`Color`] components using annotations and default colors.
 pub fn process_color_slice<'a>(
     colors: Option<&'a [Option<Color>]>,
@@ -173,6 +224,29 @@ pub fn process_label_slice(
     }
 }
 
+// TODO: doc
+// TODO: remove other one
+/// Process [`re_types::components::Radius`] components to [`re_renderer::Size`] using auto size
+/// where no radius is specified.
+pub fn process_radius_slice2(
+    entity_path: &EntityPath,
+    num_instances: usize,
+    radii: &[re_types::components::Radius],
+) -> Vec<re_renderer::Size> {
+    re_tracing::profile_function!();
+
+    if radii.is_empty() {
+        vec![re_renderer::Size::AUTO; num_instances]
+    } else {
+        radii
+            .iter()
+            .chain(std::iter::repeat(radii.last().unwrap()))
+            .map(|radius| process_radius2(entity_path, *radius))
+            .take(num_instances)
+            .collect()
+    }
+}
+
 /// Process [`re_types::components::Radius`] components to [`re_renderer::Size`] using auto size
 /// where no radius is specified.
 pub fn process_radius_slice(
@@ -194,6 +268,26 @@ pub fn process_radius_slice(
     }
 }
 
+// TODO: doc
+// TODO: remove the other
+fn process_radius2(
+    entity_path: &EntityPath,
+    radius: re_types::components::Radius,
+) -> re_renderer::Size {
+    if 0.0 <= radius.0 && radius.0.is_finite() {
+        re_renderer::Size::new_scene(radius.0)
+    } else {
+        if radius.0 < 0.0 {
+            re_log::warn_once!("Found negative radius in entity {entity_path}");
+        } else if radius.0.is_infinite() {
+            re_log::warn_once!("Found infinite radius in entity {entity_path}");
+        } else {
+            re_log::warn_once!("Found NaN radius in entity {entity_path}");
+        }
+        re_renderer::Size::AUTO
+    }
+}
+
 fn process_radius(
     entity_path: &EntityPath,
     radius: &Option<re_types::components::Radius>,
@@ -212,6 +306,71 @@ fn process_radius(
             re_renderer::Size::AUTO
         }
     })
+}
+
+/// Resolves all annotations and keypoints for the given entity view.
+// TODO: remove the other one
+// TODO: doc
+fn process_annotation_and_keypoint_slices2(
+    latest_at: re_log_types::TimeInt,
+    num_instances: usize,
+    positions: impl Iterator<Item = glam::Vec3>,
+    keypoint_ids: &[re_types::components::KeypointId],
+    class_ids: &[re_types::components::ClassId],
+    annotations: &Annotations,
+) -> (ResolvedAnnotationInfos, Keypoints) {
+    re_tracing::profile_function!();
+
+    let mut keypoints: Keypoints = HashMap::default();
+
+    // No need to process annotations if we don't have class-ids
+    if class_ids.is_empty() {
+        let resolved_annotation = annotations
+            .resolved_class_description(None)
+            .annotation_info();
+
+        return (
+            ResolvedAnnotationInfos::Same(num_instances, resolved_annotation),
+            keypoints,
+        );
+    };
+
+    let class_ids = class_ids
+        .iter()
+        .chain(std::iter::repeat(class_ids.last().unwrap()))
+        .take(num_instances);
+
+    if keypoint_ids.is_empty() {
+        let annotation_info = class_ids
+            .map(|&class_id| {
+                let class_description = annotations.resolved_class_description(Some(class_id));
+                class_description.annotation_info()
+            })
+            .collect();
+
+        (
+            ResolvedAnnotationInfos::Many(annotation_info),
+            Default::default(),
+        )
+    } else {
+        let keypoint_ids = keypoint_ids
+            .iter()
+            .chain(std::iter::repeat(keypoint_ids.last().unwrap()))
+            .take(num_instances);
+        let annotation_info = itertools::izip!(positions, keypoint_ids, class_ids)
+            .map(|(position, keypoint_id, &class_id)| {
+                let class_description = annotations.resolved_class_description(Some(class_id));
+
+                keypoints
+                    .entry((class_id, latest_at.as_i64()))
+                    .or_default()
+                    .insert(keypoint_id.0, position);
+                class_description.annotation_info_with_keypoint(keypoint_id.0)
+            })
+            .collect();
+
+        (ResolvedAnnotationInfos::Many(annotation_info), keypoints)
+    }
 }
 
 /// Resolves all annotations and keypoints for the given entity view.
