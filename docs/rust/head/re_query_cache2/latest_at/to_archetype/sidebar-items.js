@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["annotation_context","arrows2d","arrows3d","asset3d","bar_chart","boxes2d","boxes3d","clear","depth_image","disconnected_space","image","line_strips2d","line_strips3d","mesh3d","pinhole","points2d","points3d","scalar","segmentation_image","series_line","series_point","tensor","text_document","text_log","transform3d","view_coordinates"]};
