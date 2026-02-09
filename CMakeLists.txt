@@ -26,6 +26,11 @@ function(rerun_strict_warning_settings target)
         # TODO(andreas): Try to enable /Wall
         target_compile_options(${target} PRIVATE /W4)
 
+        # Enable strict C++ conformance mode.
+        # Without this, MSVC allows non-standard template instantiation behavior
+        # that can mask real portability issues.
+        target_compile_options(${target} PRIVATE /permissive-)
+
         target_compile_options(${target} PRIVATE /we4996) # Using deprecated functions is an error
 
         if(BUILD_SHARED_LIBS)
