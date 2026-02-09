@@ -2,6 +2,7 @@
 
 #include <memory> // shared_ptr
 #include <optional>
+#include <type_traits>
 #include <unordered_map>
 
 #include "collection.hpp"
@@ -22,6 +23,19 @@ namespace rerun {
 }
 
 namespace rerun {
+    /// \private
+    namespace detail {
+        /// Type trait to detect Collection<T> types.
+        ///
+        /// Used to prevent MSVC from incorrectly instantiating Loggable<Collection<T>>
+        /// when considering the single-element from_loggable overload during overload resolution.
+        template <typename T>
+        struct is_collection : std::false_type {};
+
+        template <typename T>
+        struct is_collection<Collection<T>> : std::true_type {};
+    } // namespace detail
+
     /// Arrow-encoded data of a single batch of components together with a component descriptor.
     ///
     /// Component descriptors are registered when first encountered.
@@ -61,7 +75,10 @@ namespace rerun {
         /// Creates a new component batch from a single component instance.
         ///
         /// Automatically registers the descriptor the first time it is encountered.
-        template <typename T>
+        ///
+        /// Note: SFINAE constraint excludes Collection<T> types to prevent MSVC from
+        /// instantiating Loggable<Collection<T>> during overload resolution.
+        template <typename T, std::enable_if_t<!detail::is_collection<T>::value, int> = 0>
         static Result<ComponentBatch> from_loggable(
             const T& component, const ComponentDescriptor& descriptor
         ) {
